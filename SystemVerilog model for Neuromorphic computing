@@ -1,0 +1,608 @@
+% apdxb.tex
+
+\chapter{Appendix: System Verilog Models for Neuromorphic computing}\label{apdx:b}
+This is Appendix~\ref{apdx:b}.
+
+import memristor\_pkg::*;
+module memristor\_minus (I, V,G);
+input bit V;
+input bit G;
+output Realsum\_NODE I;
+///////////// Linear Ion Drift model ///////////////
+//parameters definitions and default values
+parameter real Roff = 200000;
+parameter real Ron = 100;
+parameter real D = 3;//nm
+// local variables
+parameter real w=0;
+//parameter real G= (0.05);
+real dwdt;
+real R;
+real W;
+assign W = G * 3;
+assign R=(Ron*(W/D)+Roff*(1-(W/D)));
+assign I =  V*(1/R);
+endmodule
+
+module memristor\_plus (I, V,G);
+input bit V;
+input bit G;
+output Realsum\_NODE I;
+///////////// Linear Ion Drift model ///////////////
+//parameters definitions and default values
+parameter real Roff = 200000;
+parameter real Ron = 100;
+parameter real D = 3;//nm
+// local variables
+parameter real w=0;
+//parameter real G= (0.05);
+real dwdt;
+real R;
+real W;
+assign W = G * 3;
+assign R=(Ron*(W/D)+Roff*(1-(W/D)));
+assign I =  V*(1/R);
+endmodule
+
+
+import memristor\_pkg::*;
+module block (V\_block,regr\_cnt, V\_block\_pixel\_value,Y\_layer5);
+parameter NUM\_INPUT\_PIXELS = 784;
+parameter NUM\_NEURONS\_SPLIT\_1 = 9; 
+parameter NUM\_NEURONS\_SPLIT\_2 = 9; 
+parameter NUM\_NEURONS = (NUM\_NEURONS\_SPLIT\_1 * NUM\_NEURONS\_SPLIT\_2); //  neurons per layer
+parameter NUM\_NEURONS\_PREV\_LAYER = (NUM\_NEURONS\_SPLIT\_1 * NUM\_NEURONS\_SPLIT\_2); //  neurons per previous layer
+parameter NUM\_OUTPUT = 6; // HAPPY , SAD ... Total Emotion states
+
+input integer regr\_cnt;
+input real V\_block;
+input bit [NUM\_INPUT\_PIXELS] V\_block\_pixel\_value ;
+Realsum\_NODE I\_block\_plus\_layer1[NUM\_NEURONS];
+Realsum\_NODE I\_block\_minus\_layer1[NUM\_NEURONS];
+ bit Y\_layer1[NUM\_NEURONS-1:0];
+bit [NUM\_INPUT\_PIXELS-1 : 0] binary\_weight\_plus\_layer1  [NUM\_NEURONS\_SPLIT\_1 ] [NUM\_NEURONS\_SPLIT\_2]; 
+bit [NUM\_INPUT\_PIXELS-1 : 0] binary\_weight\_minus\_layer1  [NUM\_NEURONS\_SPLIT\_1 ] [NUM\_NEURONS\_SPLIT\_2]; 
+
+Realsum\_NODE I\_block\_plus\_layer2[NUM\_NEURONS];
+Realsum\_NODE I\_block\_minus\_layer2[NUM\_NEURONS];
+ bit Y\_layer2[NUM\_NEURONS-1:0];
+bit [NUM\_NEURONS\_PREV\_LAYER-1 : 0] binary\_weight\_plus\_layer2  [NUM\_NEURONS\_SPLIT\_1 ] [NUM\_NEURONS\_SPLIT\_2];  // 1024 neurons. Each neuron gets 1024 connections from previous layer
+bit [NUM\_NEURONS\_PREV\_LAYER-1 : 0] binary\_weight\_minus\_layer2  [NUM\_NEURONS\_SPLIT\_1 ] [NUM\_NEURONS\_SPLIT\_2]; 
+Realsum\_NODE I\_block\_plus\_layer3[NUM\_NEURONS];
+Realsum\_NODE I\_block\_minus\_layer3[NUM\_NEURONS];
+ bit Y\_layer3[NUM\_NEURONS-1:0];
+bit [NUM\_NEURONS\_PREV\_LAYER-1 : 0] binary\_weight\_plus\_layer3  [NUM\_NEURONS\_SPLIT\_1 ] [NUM\_NEURONS\_SPLIT\_2]; 
+bit [NUM\_NEURONS\_PREV\_LAYER-1 : 0] binary\_weight\_minus\_layer3  [NUM\_NEURONS\_SPLIT\_1 ] [NUM\_NEURONS\_SPLIT\_2]; 
+Realsum\_NODE I\_block\_plus\_layer4[NUM\_NEURONS];
+Realsum\_NODE I\_block\_minus\_layer4[NUM\_NEURONS];
+ bit Y\_layer4[NUM\_NEURONS-1:0];
+bit [NUM\_NEURONS\_PREV\_LAYER-1 : 0] binary\_weight\_plus\_layer4  [NUM\_NEURONS\_SPLIT\_1 ] [NUM\_NEURONS\_SPLIT\_2]; 
+bit [NUM\_NEURONS\_PREV\_LAYER-1 : 0] binary\_weight\_minus\_layer4  [NUM\_NEURONS\_SPLIT\_1 ] [NUM\_NEURONS\_SPLIT\_2]; 
+
+Realsum\_NODE I\_block\_plus\_layer5[NUM\_OUTPUT];
+Realsum\_NODE I\_block\_minus\_layer5[NUM\_OUTPUT];
+output bit Y\_layer5[NUM\_OUTPUT-1:0];
+bit [NUM\_NEURONS\_PREV\_LAYER-1 : 0] binary\_weight\_plus\_layer5  [NUM\_OUTPUT]; 
+bit [NUM\_NEURONS\_PREV\_LAYER-1 : 0] binary\_weight\_minus\_layer5  [NUM\_OUTPUT]; 
+
+generate
+genvar i,j,k,l;
+
+    for (l=0;l<NUM\_NEURONS\_SPLIT\_1; l=l+1) begin
+    for (j=0;j<NUM\_NEURONS\_SPLIT\_2; j=j+1) begin
+
+        for (k =0; k<NUM\_INPUT\_PIXELS; k=k+1) begin
+            always @ (regr\_cnt) begin
+                binary\_weight\_plus\_layer1[l][j][k]  = \$urandom\_range(1,0);
+                binary\_weight\_minus\_layer1[l][j][k] = \$urandom\_range(1,0);
+                
+            end
+        end
+        
+        for (i=0; i<NUM\_INPUT\_PIXELS; i=i+1) begin
+            memristor\_plus  mem\_g\_plus\_layer1 (
+                .V (V\_block\_pixel\_value[i]),
+                .I (I\_block\_plus\_layer1[j + (NUM\_NEURONS\_SPLIT\_2 * l)]),
+                .G (binary\_weight\_plus\_layer1[l][j][i])
+                );
+        
+            memristor\_minus  mem\_g\_minus\_layer1 (
+                .V (V\_block\_pixel\_value[i]),
+                .I (I\_block\_minus\_layer1[j + (NUM\_NEURONS\_SPLIT\_2 * l)]),
+                .G (binary\_weight\_minus\_layer1[l][j][i])
+                );
+            
+        end
+
+            // Activation  function 
+        assign \#1ps Y\_layer1[j + (NUM\_NEURONS\_SPLIT\_2 * l)] = ((I\_block\_plus\_layer1[j + (NUM\_NEURONS\_SPLIT\_2 * l)] - I\_block\_minus\_layer1[j + (NUM\_NEURONS\_SPLIT\_2 * l)]) $>$ 0) ? 1 : 0;
+
+    end
+    end
+
+    for (l=0;l<NUM\_NEURONS\_SPLIT\_1; l=l+1) begin
+    for (j=0;j<NUM\_NEURONS\_SPLIT\_2; j=j+1) begin
+        for (k =0; k<NUM\_NEURONS; k=k+1) begin
+            always @ (regr\_cnt) begin
+                binary\_weight\_plus\_layer2[l][j][k]  = \$urandom\_range(1,0);
+                binary\_weight\_minus\_layer2[l][j][k] = \$urandom\_range(1,0);
+            end
+        end
+        for (i=0; i<NUM\_NEURONS; i=i+1) begin
+            memristor\_plus  mem\_g\_plus\_layer2 (
+                .V (Y\_layer1[i]),
+                .I (I\_block\_plus\_layer2[j + (NUM\_NEURONS\_SPLIT\_2 * l)]),
+                .G (binary\_weight\_plus\_layer2[l][j][i])
+                );
+            
+            memristor\_minus  mem\_g\_minus\_layer2 (
+                .V (Y\_layer1[i]),
+                .I (I\_block\_minus\_layer2[j + (NUM\_NEURONS\_SPLIT\_2 * l)]),
+                .G (binary\_weight\_minus\_layer2[l][j][i])
+                );
+            
+        end
+
+            // Activation  function 
+        assign \#1ps Y\_layer2[j + (NUM\_NEURONS\_SPLIT\_2 * l)] = ((I\_block\_plus\_layer2[j + (NUM\_NEURONS\_SPLIT\_2 * l)] - I\_block\_minus\_layer2[j + (NUM\_NEURONS\_SPLIT\_2 * l)]) $>$ 0) ? 1 : 0;
+
+    end
+    end
+
+    for (l=0;l<NUM\_NEURONS\_SPLIT\_1; l=l+1) begin
+    for (j=0;j<NUM\_NEURONS\_SPLIT\_2; j=j+1) begin
+        for (k =0; k<NUM\_NEURONS; k=k+1) begin
+            always @ (regr\_cnt) begin
+                binary\_weight\_plus\_layer3[l][j][k]  = \$urandom\_range(1,0);
+                binary\_weight\_minus\_layer3[l][j][k] = \$urandom\_range(1,0);
+            end
+        end
+
+        for (i=0; i<NUM\_NEURONS; i=i+1) begin
+            memristor\_plus  mem\_g\_plus\_layer3 (
+                .V (Y\_layer2[i]),
+                .I (I\_block\_plus\_layer3[j + (NUM\_NEURONS\_SPLIT\_2 * l)]),
+                .G (binary\_weight\_plus\_layer3[l][j][i])
+                );
+            
+            memristor\_minus  mem\_g\_minus\_layer3 (
+                .V (Y\_layer2[i]),
+                .I (I\_block\_minus\_layer3[j + (NUM\_NEURONS\_SPLIT\_2 * l)]),
+                .G (binary\_weight\_minus\_layer3[l][j][i])
+                );
+            
+        end
+
+            // Activation  function 
+        assign \#1ps Y\_layer3[j + (NUM\_NEURONS\_SPLIT\_2 * l)] = ((I\_block\_plus\_layer3[j + (NUM\_NEURONS\_SPLIT\_2 * l)] - I\_block\_minus\_layer3[j + (NUM\_NEURONS\_SPLIT\_2 * l)]) $>$ 0) ? 1 : 0;
+
+    end
+    end
+
+    for (l=0;l<NUM\_NEURONS\_SPLIT\_1; l=l+1) begin
+    for (j=0;j<NUM\_NEURONS\_SPLIT\_2; j=j+1) begin
+
+        for (k =0; k<NUM\_NEURONS; k=k+1) begin
+            always @ (regr\_cnt) begin
+                binary\_weight\_plus\_layer4[l][j][k]  = \$urandom\_range(1,0);
+                binary\_weight\_minus\_layer4[l][j][k] = \$urandom\_range(1,0);
+            end
+        end
+
+        for (i=0; i<NUM\_NEURONS; i=i+1) begin
+            memristor\_plus  mem\_g\_plus\_layer3 (
+                .V (Y\_layer3[i]),
+                .I (I\_block\_plus\_layer4[j + (NUM\_NEURONS\_SPLIT\_2 * l)]),
+                .G (binary\_weight\_plus\_layer4[l][j][i])
+                );
+            
+            memristor\_minus  mem\_g\_minus\_layer3 (
+                .V (Y\_layer3[i]),
+                .I (I\_block\_minus\_layer4[j + (NUM\_NEURONS\_SPLIT\_2 * l)]),
+                .G (binary\_weight\_minus\_layer4[l][j][i])
+                );
+            
+        end
+
+            // Activation  function 
+        assign \#1ps Y\_layer4[j + (NUM\_NEURONS\_SPLIT\_2 * l)] = ((I\_block\_plus\_layer4[j + (NUM\_NEURONS\_SPLIT\_2 * l)] - I\_block\_minus\_layer4[j + (NUM\_NEURONS\_SPLIT\_2 * l)]) $>$ 0) ? 1 : 0;
+
+    end
+    end
+
+    for (j=0;j<NUM\_OUTPUT; j=j+1) begin
+
+        for (k =0; k<NUM\_NEURONS; k=k+1) begin
+            always @ (regr\_cnt) begin
+                binary\_weight\_plus\_layer5[j][k]  = \$urandom\_range(1,0);
+                binary\_weight\_minus\_layer5[j][k] = \$urandom\_range(1,0);
+            end
+        end
+    end
+
+    for (j=0;j<NUM\_OUTPUT; j=j+1) begin
+        for (i=0; i<NUM\_NEURONS; i=i+1) begin
+            memristor\_plus  mem\_g\_plus\_layer3 (
+                .V (Y\_layer4[i]),
+                .I (I\_block\_plus\_layer5[j]),
+                .G (binary\_weight\_plus\_layer5[j][i])
+                );
+            
+            memristor\_minus  mem\_g\_minus\_layer3 (
+                .V (Y\_layer4[i]),
+                .I (I\_block\_minus\_layer5[j]),
+                .G (binary\_weight\_minus\_layer5[j][i])
+                );
+            
+        end
+            // Activation  function 
+        assign \#1ps Y\_layer5[j] = ((I\_block\_plus\_layer5[j] - I\_block\_minus\_layer5[j]) $>$ 0) ? 1 : 0;
+
+    end
+endgenerate
+endmodule
+
+
+
+
+module TB ();
+parameter NUM\_INPUT\_PIXELS = 784;
+parameter NUM\_TRAIN\_IMAGES = 30;
+parameter NUM\_OUTPUT = 6; // HAPPY , SAD ... Emotion states
+
+real V\_block;
+bit I\_block[NUM\_OUTPUT-1:0];
+bit [NUM\_INPUT\_PIXELS] V\_block\_pixel\_value ;
+int cnt,regr\_cnt,images\_cnt,res\_cnt,found\_match;
+bit [NUM\_INPUT\_PIXELS] happy\_image\_array [NUM\_TRAIN\_IMAGES] = '{
+'h52e5721add81bef7f03dfefc73df25808eaff77ece82ffff19da77ff3b801fe77cf0c75fffbe09e3873894beffec818c01000d802042f811909708107f9f42e3707ec440438db71fc64d1f7f8b6bfa02a90ddf15f865107600020dc00000a7ff80f0,
+'hc13fd2c4160eb470c07d19f823eac74fbecde004fd697fe329cf971f73402f49f9f9fbf7e23fd56f8ffb8c28c186011c03800d81cc01f80567e07e0a7f0fe7410f046a41781157effe7a010dc7b1ce66dc02f8dba000107d004009e0000071e80018,
+'h857ff6f41f27f323a07f883863ff4f801f3177fe5026fffb06f467e83f801fccfdf3e43aee67c7471cbac19ff47202fc0ac816801200f01397e9560c7f9be3d1905c8a41f017d3f3fe1a1003c442d0303f1c8a4ce8060877858118d402617feff8ff,
+'h81bfa0f427fd3692e3b5d21e07e3674e7fa9e001ddff3fe6eca5ffbd27603fed78f9f5bfd77badee05c55c7ca52f67bc25a81980d480f812820746447f07eba3ed8c9800781766fffed17f6fc3f1a13cc803f013c004d07b00000958000163ec0088,
+'h703ff81f4c0381cba00c7f7cf9ff9f8fcfae778077947ff3c41e039c63c21cfbffffe96fe07f18fffffa5e3bff098dd01e180c80ca00f813604008007e0761a7c9ff26bffde754cf00d3619c33e7f6f8ae20041bd80000ec000006f800035ff9fffc,
+'h80ffc0101e0a7f8bc07a0170f3d00fc6be92d3f8f42b614bb56fff5733607ce7f861e9dfdfbfebfe07e9f4dbf1d203fc02501f805800f8008e2144527f77c3000f10dd617c4ba9f9f96b22120f001cc3b5c01a0ef008071b980006e08003ffe3fff8,
+'hd5bfa13217fd2da2e075bdbc03abe7473fe16df8e34f25cbefcffe35a0006df570f9f0bfbf7ed77e07fa5cfde72c270c05200d803480f01eea30463a7f07ed43cd84fb01780b07fffe3f1f9fefd026070810904fe006004600400fd80000b3ec00a4,
+'h80ffe1501f8f2b89e03b117c73d83f989f41d174fa6b2005d18fff4bd16ff6eb7900f45fdfdfe3f603f9f9b8e9f247de04400ec03480f814a015c0367f27e293ffbe5e40b81d1b3bf6ae0f5f95281a01bb81cc054f00232bd0000fa40000ffe3ffec,
+'hfc30781fec01c7f3afad3edc73ff5a18cb3f3fbf5eecff77ed1a038f93cf9eba7ef7f92ff9ef9cf1fff844dd73d881c80d100f0184836082820456137e93f753dfdc0248f00bf219e4fe1f2f83e92021df00802ed800013700002ff80005effffffc,
+'hdd9f2bfc7f0fffd7e03db4f0b1fefa000afbaffe5135fffff5f067f1e7800e75f9f9f2ff6f7f93cf0f7e48fde718039c0a000b811183fd2140c7207c7f9fc603e0781c80702c277fccd95f3f4ee3b04829957e5cf46b90dea0020e510000b7ffc1f0,
+'h85cf39eeaf07ffc7423ceaf432e37b000deb5fff6f3e7fff15be67afff800f85fdf8f6de6fbe93cb06396c7cf741090c090009809180f810089f09307f3f63c7787c66803187ee1f8301df7fc5e79022a980044bb0dff07e828004d7020097ff00f8,
+'hfef9f5787e03bbfbc03da4f4e3f5ed9f9ea3f100f4eefff73cdfffff67801fdcfdf9b232e1749b4b0ea0425fc1b4831c372010809a00f812e49f081eb7ff6c03e33c3048f815f27afe2e7f14c791c28e3f8f950d1000007a80000dcc0000b0fffcb0,
+'h947ff43f7e07af6b803db238f3e2dfdf9f5f5104f174afa10c8706190fa65fc0fdf9fe1fe07fe0e32e362070e1b481dc0a240fc14c00720992711e237cfbe4400f806b7fdff2c7fafe5b2626eaa0c9d8fd8c4207440210cf4000237c0003fffbf8fe,
+'h7a607c587801faffef3f673c6bedcb998fa36f3f3cd7fff55dbe07c3ef869f96fdf7f88ff1df98e7fbfc164d4181cb5804a80f818083f207264756237e83f023df1e4b0d7809d00fc2577f8f92d37440fe000016f80006ae400016740005ffffffb8,
+'h803fd0670ffeffeffffffffe0fde93801edef198fe7f2fe75befa73bfd607ffaf8fbf81fda7e0d3f4ead36dfe1ee81581ac00d8040a070010412fe68bf97e363ff0ca84038253279fe763ff492100030fb0840084808087b400111480003fffc00ff,
+'hffc7fdfffe07ff16005f6efc73efbf000f72fffe77fe7ff39d1c03cf7f861fa6f5fbd4bf207e9c4fee32803ba0928004051006805c40f809e89d4a3677fff2cbe31c9a40fc1963f8fe6b5d02c381e7c02d0205071800006c80000c6c000091bffff0,
+'hff3fdeeeaf06fd958033957433fffd049d7971f8eb6f20466aafff4809783570d820efc7cf9f05ff07f7545ee20f218408000780130078168e357e32be03cd61c7803cc1fe2393fafc9e18c08d81c6c17780291de0040a67e000494800038bfffff0,
+'h7e063607c07c12f8f1f83f909facf2e8f83a3149fd4c5f5530fff0aa6c036c6f060f55f9f7faffe07fce1b9e1f904e404a015803108f804ce2f47147f77c7282f039d61fc43f1f2f8cca2921f880451ae00d837f95802f388001b2880007fcffffc,
+'hfd7fd7b1ac06fec7c018daf4fbfab70d1f5ef204ebccfff4358fff16cb202590f8f8f09fc71f51b70fe2501880dd40ccaa610f80a80072171bf05e1e7e33eb6b87805243ff2787f8fc8438818ef2c6d03a08104eb80c006d001817ec0002d7ffffb8,
+'hf7bfdbfa0fdef7ddc03fffb801c347af3fc3fdf8f9fd00477fc7ff3c8af4bfb8fe05fdffdfffa9ff17fb667ee75887dc09f01d812b00f80de01f42683f17e3f3f9805500f80f27fbfe1f7eafef506440be00d0076840017f00000df00003e0c00020,
+'h76fffc7c7c47afebc01df538f3e1e7df9f7cd18cf03026299187ff0d4f800fc8f9f9fe1fc87ec24bde5fb8e0f10581040b21c7801480fa1182615e5bfedbe0d00fc04073f83267f1fe4a0f0004f8f14abc04a209a8001804c00037fe0004dffbf8fe,
+'h57ff4f81f2ffe238076d03e03f24f000f91dffede26ffff07b5e7e8bf801fcdf9faf56bce7fc9c61c3a799fe9ca02b803601e800c00780136af569a7f9fe7d39b5c2e41e015e3fbc63b0807c252c19ade060547f08108a280a1173812a0ffe9f0ff,
+'hc07fd8510ffebfefffffbffe0bfd9bc00faf71f8fb7e06c7eb8fff05ac683faff879f95fdf7d09ff077cedbee38005bc02c00d8050887212001bde18ff97e263ff0ed9403812027ffe473fae17600580d9164423980008d6000000980001fff800ff,
+'ha29fedf417bf46a1d33eb93a01ff4e860ff37000f00dfff3217dffd07fa01f9af9f9f84fef264ba785f8dc7efaaa027c1e6407001000f80da33d56253f9fe155f88c59207012e9fcff5180008260c072d78201c2a00100c7a0b03d180100bffe68ff,
+'hfd7fc1f76e069feb803ffa3403be571c8e1ef1f8e38e0006c28fff10437e73b1f802f937cf9f65ff43e2573ae35f43df020884c90810f801181546da7f97e943c19c0441fc05a47dfebb7f01ca4180006f0c8e1eb8060151000024fa0004e7fff3f8,
+'h83fb0760ffceffffff7fb7f1fff5f801caef1f1fdbe00cfcdcfff16e8487f1ff063f89f9f7ea4fe0e94227de6c54dec024009809888f0120012fe583f97e747f71c2a003815327efd143f7c0e3118421890100a7800095d40000fe800011ffc00ff,
+'h1adfec8c038f43e0501e7fdf7956fdc05e34fbf87cdefffbefdf83db9fc014667efdfdc7f4bf2cfdfff90ffefd8180de201c08c0fb8af811820228527f8523039ebe5f1ef9ead61f01ca7fbf0bb2f5233d008857780024bc00002650001b3ffe3ffc,
+'hfbbfb19f1f7ccf2de17ddffc23eb0b107f6f7c01f8ff9fea7ee7ff5988e0dfff3843faffff7f54ff1d7d1c7de86f5fd83b8807811f00f816a00f7e9e3f1be593ed80fa00787553fdfeae1f8c8b5082406f820009600001ef80001e580000d0440030,
+'h81ffe1583e073317c03c18f8fbe81d971f46f000f91afff1f707ffcd97f03ec5fc79fabf6f3fdbff8fffe03bf37107fc0bc80f804a81f813862350423f07e503cf8c3341f821f372e4989f0f87f02801a2001807fb1a02b9580005fa0001ffe3ffe8,
+'h867f743f5ebfae3bc01dbd7801e5aecf3e2d7000f0fc3fe19d870348c7a66fd2fdf9ef17e23fe8af5e333432f79281540a610f4010807a10e2205258fcdbe2600f806ce3fc13b7fafe794f51daf9e3c84900424fe9f0109d800017720000bff980fe
+};
+
+
+bit [NUM\_INPUT\_PIXELS] sad\_image\_array [NUM\_TRAIN\_IMAGES] = '{
+
+  'hc0ffe8111fff76ffffffd53801f3e7861edf7e0efeee7ff777dee7f5c7801b807dfb6b99ee7f91cf4ff8947fc2c0817816190d804000f0181066d210ff37e2c7df3e36007001a67bff347f9ea22136c05c060308200d447d0200142000003ff000ff
+ 
+, 'hfff9fee1fe0397f7803cfd7c63f33f801edef7fe5ffefff733d403a4fb861ebe7dfbdd5f307f6c0dae310429801180800d800781b082f813e2db46e03f77e3e3e31d0e41fe35a7f07e1b5e00c6f0dfd87581420c7000007d800018ec0001b03ffef0
+ 
+, 'h81cab1707f15984bf7fc83fc41e875e03fc8fffff37ffffffcf25bf43fc00f95fcf9fefef73f9bf78fffd02ec36701f885b80e00a8007a01c7e156347f07e4280d003c70f874b3f8fc9f890807f002717f01401bff40365d98008f280000afc77fe4
+ 
+, 'hf83fe7706439fdf1a00ede3879dfb7f00f045fff7a09fff87cf703f00f821e85eef9fe9ef4ff1d738e781c9cc2b700648e880f8191007a18b67052447e07e1a80d0654c3fc02c3f7fe523682833194f0d4061807f00020adc06897a00002e7fd01fc
+ 
+, 'h42ff92efdf3ff3fbe07df0f92be27e643f7ff81dee0fbffb7fffeffaffe03f70f051fdffff7facff0ffd377dc7bde59815e807802e00f801c02e7e243f17efb3fb819e0070f3327cfe3f3f9a8ac012d07704130be80280ef0200153c0000c0800000
+ 
+, 'hfc27340f6c39c3fbb87e4d9c1bf3f3fe5f98bfffbeede47cf17c01fe671faf1f7eb7f86ffbff88f7fd5d0811e3cc81f80c180f818c82020616c046007e97f333df9c5842f002378bfe7c3f9c04b0f641d4800032e00100df800033e00004bfff0ffe
+ 
+, 'h627fd0b82d1ea739de7dc57e07ebdfc63fd2c800e2eb7fffb1ddff7c77e03fbff860fe5bdf3f27f6063dd23987f9969789e01181a481f815870f076e7e0fc503f27c1e00f017b7c69afb1f9fe3d825a87a0d308ae07df03d000005680000a1f80034
+ 
+, 'hfeffc9a53de7e50d803dad6307f7ffe05f9f702ff5ffffffbfff6f5e08603fb0f809f8fbff6fd1ff0ffeef1ff29b019c19c00f00a900f804f01f563e3e57e473f9802e00703593f9ff5f5f87034182408f032307f821003780001cf40000a005c070
+ 
+, 'h86ffed18ffffa7b7801ff7bc01cbd7101e37577e30aafff785d266d34b801fdefdfbfd1fe17fa0f74f7499dfa4f3e0141b7004a04081e801c7e17c107f97e560078128ffbff4d3fdfeaf530496b0c0f89e0b5f0fd840400a80200f7600034ff000fe
+ 
+, 'h79fe2b0f40f820fed7f13f8f3e43fc03ec5ffffb39ffffdfb76e7f66e001f89fdfaf671ea798fff0c7fe43f88d339d014901f813004700547a07e7c7e37c3400f825278f1c7e3f9e0ac8b6b1bf000214383c82ef1c1013f08000fcc40017f1ffffc
+ 
+, 'h1117b87807fe83f8fffe737e67ff7b801eefbc10f3977ffffe7fa772eea07f9ebc73f08ffffe30be0fe8eeffc7c981fc0ed08d80a18070050012d0287f07e5e3ed1e3240301673fdfe503fd8277356d0aa8005074020018d004027dc0000fffc01fe
+ 
+, 'hfd3f69fc6479dff3800ffafe79ffc7a00e097fff634dfffe88be01ff17820f07fef9ff3f70ff55eb86521c1cc2bf90410c800f80120072104bf046d05e07e5680f0668c7fc0507f5fe7c460488518c90fa040c56480c00ed00002bb40001efff83fc
+ 
+, 'hfdffd33f2f6fb605803d5fb70fe777e07faff809e7ef7fffdfffefb7ffd03f8bf001f50fff7fe4ff1e7cbfffd699c7fc12e015016a00e803c00f7eda3f17e8d7f981db007023466efedf3fe60ae02040e70381077004016e00801ff8000280400040
+ 
+, 'h439bb171fa07a027ef7f80f803e87fc03f59fffffa3fffffe3e8e6f1df001ff3fdfbfaffee7fd7eb1f7ee44fc9a803f00fe01580a005f8134fa000c4fe07e3803f1c4ce1f02367f3fcb927180cd00c7012820805bec023bc300025500000ffcef7fe
+ 
+, 'hb7f09ae69f82fdb7f11d653e78ebeff01ed077ff5fd7ffff53ff73f7bf803a66fc00e9cf2faf97e30778187ce7c800bc315c1880b802f801a31f42143f72c6a070fcb470438ee5ef0211333fcde87801e74c8f47c83100a680201d72800133ffeff0
+ 
+, 'hf2e019c63d03f3dff31eeb7c49efc7f01771bfff93afcffefbdf73f36b803ff378a4e85f6faf99e7077a503ce6e00114090809801f8af811835f08663f3767a0f1fc05c0638f97c7023e67bfc6b1f9a5edcb8505ea6181e450100d6e800123ffe3f0
+ 
+, 'h6fff838fdf3c7f7019ef87001dbe7900e37ffffea88ffe474cb669829001b34ddf3dc9fe97fd3ff0ff4329fa5f58004bd201f80fc80f81107e07e98fc93e160070052ffdfe497fffce7472d88d38974d80e478df8410029c0c0375000009fd000fe
+ 
+, 'h837df4f21d77d003847e72fe07fd178e0b3e9f1fd31fffbd16bee7fa9f001f8b9df3ed3fe87fc5e75d7abbdf6d7703e1088006801800e002c6af563a7f17e1b09f01bde0d031e7f9fe680250a3d1c0f52b072c0fe012005700d413b80120fff8687f
+ 
+, 'hd37ff5e01de7a313004f74fa03e01f841fb2ff9fd557ff7f52b6e7f22d001e85b9f2fd9f6e6fc7e75f78a59be5e703b80d0c07002c00ea00422f5e397e5fe230d981dd603032e1f9ff6963e021e140d56e074401f01120e704d4037c0121bbf8687f
+ 
+, 'h317fec2eddfff5ffb07ff3f801ffd7402f41e7fff7eeb0f356d2a7fecd801fb53dfbf91fe07b8997defc167fc1fb81f804320d801080f00950f2fe017f17f3c7c7048c80382167f9ff3c63c88421be729f04010ec018086c0000197800226fe901ff
+ 
+, 'hae6703efffbafff90bdf87c01e2c7080e5bf7fe52eefffb84de0271ab8b9dd1bcf3fa9ff07fe2ffbfba13dda1b4801024900de09400e80183e17e2a7e13e0e0078048e0f8f3b7fefe440f079271ea2cc80d3742e870105180000b7409833ff1007e
+ 
+, 'hc07fec07c27900fec00c1f7efbebc9feffdd7ffff2fbf4fbfcfc01fd250fbee7be77f827ffff80fbfff9cb79c380c1d91d8c0f0180020082034056027fb7e311df9c51437022e7fbfddf3bb60b98c1433f24000de800036700006eb800003ffe4ffc
+ 
+, 'h803fec0f840181dde62c3b7dbbe64bfa7fbf3ffff6bdfeff7e7e03acf78f9ff4fef7f0aff9ef84effd781539f7d941980c180b01c1104008a4a000267e17e3031f0f0083f0022f1ffe5c7ffe8e35a0c03425100da00201bb00003f5000003ff801fe
+ 
+, 'hbef7ffff7c03dfcfa03ff77cf1ef3fe06fdcffff7575dffe38fc47faefc21ed676ffee4e707f3d09ae2a3e08c118001c11400601da00f80860d756f9b75fe361f59d38403035f7fdfe223e836690f5f81703ae0fd840006e80000ffc0001f03ff7f0
+ 
+, 'h2bc059ee7203cfefe71f447c03fbdbf7f6d1bffff7f7bf3fbafd07f45bc00e37f8f9fddf6fafab6b0778487e809111040100098159c87891231f44683f17e340f9fc3a407011d5e386cf67dfa3dbf40cb64fce147e0800cd102815a6c000f7ffc1f0
+ 
+, 'h83c0b3703f07982ffe3ea3f823fc47e03ea5fffffc97ffffaafe7be57e002fdbfca9fa9a6f7bb76f8efef93bc4b729f804b81f00f801f81386234070ff0fe061ef3e5ac1f012f7fffc5f078d8b0044b01f00161ff068023fe1104f098000efc673d4
+ 
+, 'hfc3fc4f3f4717dfa803ffe38f2dbf7f01e15f7fffbaefffa70fc01c887820e2dfff9d89ff07f3563ae741c08c12700508bb80f80b4007215b7f056647e07e1600f00d8c7fc0be3fcfe247d878fe1e5c4fc050313300809cd80002eb800055ffd83f8
+ 
+, 'hc27bc6c22ddeb7fba07d07f407cfd7893e52f74ffbfbfff229feaefd72001b2bf9fade576f7f17ee0ed5d09d97b382dc068011839701f006c7a78f927f0fc7c3e17cfc80f00777d6be9e2f9fce71f5990c81828fa074714d00000bf00001f3d80018
+ 
+, 'h837ff5e01c6fd143c07ee2fa07f1174027e89fffd17f9b7ee6a643f89f801f87ddf2fd9ee06f4ed71e7a743fc14a80680e80170094002a00d6af5f3a7f1fe2c0d8019960f03b31f9fc6d4320b1d3c476ee0228426011005740d088f800213fffe8ff
+ 
+, 'h7f9ffdffbc01efffc07de3f8f3ed0f607ff1fffff3ffdffffffb8ff013c01e8c8dfa4af7207e4de5cc39402b2681809801c01580b080f811502f56fafd17e543ed3c32c06031e7fdfe6e7f8246316078370fe905d021607b000004e80001b07ffef0
+ 
+
+};
+
+
+bit [NUM\_INPUT\_PIXELS] angry\_image\_array [NUM\_TRAIN\_IMAGES] = '{
+ 'h614dd2f0b00fb4f6e1fd7bf90fcf2f83fe4dd7fffb4ffdffcbd203f9fc0f7fed3be5fa3fe7e7d9ff7c1e5ff9800b43f007e01f20180075f2e801f8da3f180ae785ff8d01fffcb3ff7fbe3ae784701d9c3d1c4205e82b003f000009f8000150ce001a
+, 'hf1bc9655c4f0ff06804fef8443879f827f647fffd94bfffe2afc01f5ff871ee1fefbf3bff07f03db8e6b7438c193800406e007009204224810114bd47e03f4070fc02c03ff8a8fffff0471f7e76120c0181c0326c0af8013000047ec0000bff8003f
+, 'h37661f82f533eff5f9bfdfa07fff7873dfaff0eef27ffff8ffffffffb401fb3faf9d0d7f07e5ca3ae38420987d3c0103a600680d840f81a20d7483dbf57e401c30c73639e2043f4be3a1884c0f07f1c6b837a0eb000007b80000fdc0001b7f800f0
+, 'hbce39cffffc4fdffe1ff7c7c08ff2ffd1fc6fffe5f97847ee9d801e84a9f9f09f772e91f297fc2a9ff7c2e4b03e3031104301601b500c804c6b8df20fe33f3018d805ac3ff124ff9febe710647978400960c841ea010a03c800015d00102af9403f0
+, 'hbb3e4ff7d4f2499e0054f65851fecff3ff58dffffb8ae6f9549c01e9b7cf9f67fffbff1bf07f1b47af695f18c321407409a80f804110104c06307b557c59f6a21fc08487bf9247fdff1a7167c6a1e460140989864000003b80000dc40001fffc013f
+, 'hcf9e354c360b39cfee7cfb7101dfcfedfa86ffffc793fcffa1f801e15f861f69fdf7f03fe07ff5e7de781c39c70a01b81cc00f809002fc12185b24097f0fe74164289880f83627f9fc5d27ec33b79ffe731f5504dc6880f7a010014c8000a7ff00be
+, 'he4dfe0a01a7d18820003703e07caf3c1bf1cffffee77ffffb7f2036dcd800fbbfdf3d63c607f9787fe6a9737e67301cc1ec80f0190033a8ac6c052567e03e8800f80741fff94c78ffe3317bfd2d0efe83b0baf34c05b20aa800006d0000053f000da
+, 'h87db6a4c59e3a88360fb373cf7bfef802cfd7fffbe0dbffe8eff4fed97800ff3bdf3f28fef7f13f78f7a5e74cfc5019810140b808482f101981700403f0fe18360280800f81767ffff2a27b805d0f4eebc1f4f46dc2a0057e0000e658100f3ef005c
+, 'h38092613f019147ef7c837e8bf4cff0ff83fffff6efeefffc7773fc3d000ef3e9f9bbd8ef67cfe7073e713be3ff01ec04b81700b800f801c62f4825ff9fe300070c44c3b017f7fdfe07226c0ff00900bf03a01de400a07120002df980013f8000cc
+, 'h6f84880bee4358ff737ffff3fff3c01fd4f000ffeff7f7d3fffff3efe07f1ef803faffdffe8fae07580e7dcbc101fc0ed005815080f00e1032f4087e87e0c7d7063300380067fdff0013ac23721822c9a7790bf08c00ae8000069400209ff801ff
+, 'h82cf327058f1915fe07dc27ff3f81fc03f45ff2fff67ffff1bbffffeff401f95f939fcddef77bfe3067d207ae2ff00f405f81d00f901f812862f4014fe0fe300091c42c3f837f7fffc4c22dc0b485018df03c013f0210397e02027b90400afc000ea
+, 'hd59e63cc7a09b1a3e27bfd78f3eae7c0fdf3bffff6effffccd7a47e97b801ff9fdffe0ab607f95e7cf7a5e7bc789819809100f806082f51910172218ff1fc86366286c00f83527fffc2e47fc25d1e2ba821d17c6f46d4081f0000f60800017ff805c
+, 'h83cf11b1bc019857fffea2fdfbf09fe07fdafffffe2fffff5f7f77fbdf4017e5fdf9fb7c6f7fdbe30e7a755fe2df81f406b01f01e804f80187ab40347f7ff1200d0054fffc35f7fafc2e101a0de039809f82e497f044027fe02077f98000bfc403ec
+, 'hfcbbb0ac1d8c3ffe07ff137e8fdaedc07e19f8ffffbffefe4fae5ffb6d803f13b9f7febfe0ef9dff7e36dfb5c17580b811a01f00e400f563e0007ece3f180d8747030b01fffa73fdf7de7ba686738c80b8863785f81014b7800017200001b0400044
+, 'hc4dfc0081aef1c035021383e63ebc3c03df37fffe6eeffff8dfe03ef2f8f9fc7fe7bf7dfe07d8b63edfade1b67ff00c809684b81fc00408dc7f073ac7823e3803f806e7fff95277fde670bd6c330c61ade83ff85400600db000003e80000d7f000de
+, 'hf7879f9fd407f703ce7fdeb802da3fffdeff7fffff63807f43dc43e886ffffaefc2ceecff7ffe0cff937de00007103e80e0012806a8062102160de987e01e0338f812501bfe1f7f9cd78980e00fb4500dc0c078a6c38015b00000e680002b7fe03fc
+, 'h67cec0c8cf34d9b80583671f1ed77806f1bcfff22cef02b1ad241f1dbdfbf85fe17f89ff6ffd9fafc7e3a10c3b541c40e180781dd108202e6e13e10f87804203ff9aafffff1c7fbfa520714c2e1dc88791817c348e230c3400013d800005ff0007f
+, 'hea3fe55056770ac1903f703a07e1878e3ff6ff1ffb1fdf3de37667fd7f801e0a9df6fc4fe067db67ddf8d5bfe3e381e005c81681ba0072806aa956117f1fe2208b803943f831e3f5ff6d40d0e7a2949677062200d000007600e800780d60ebec107f
+, 'hf37fafff6ce1cf69007ff9bcf3fd8f807fa8cffed28ffffc793c01eb1f071f86fffbf41ef07f77df8e53ba39c07a8078025007018104401124317ee9fe31f1460dc0c887f7f34ffffc6077f3c9e2c050b41e4280a00cc0f980101be400017ff8007c
+, 'hfdc723bf720fde1ffefc7f6417faee81bdc1e3ffebf9fdff33dc03bf760a3f1cbbeffcbfc1ff37ff7875ec7b812083f01d301f08ee01f4678121fe967f3004c7870bba83fff9e6fce4aa79a425d289909e035a83f00004d5008012f00000e0880000
+, 'hb17ff2e41cc3aba1801f083a37ff47c03d13efffff2ddfbe997667e44d800f82bdf2f4cfe47faff71d96933be6d383e405c0170122006808c22b52177f1ff2810a0c1b41f01343fdff9d0010e6e1808635074fc968580077000000a80f4097ea105f
+, 'hbfe23ecfff3ff7f77ff79800eb97cf8e7efb07ffff7fffcf7f77fa6dc03f9dedf9fb06ef7b8af3cd6c5e5dcb6101f82f980d80c080f011c7f0f4227f17c042070e024ff803c7ffff5f39f02c12650f3e01880fe00621ab800015d00000fff001fe
+, 'h7c5c005f33488fcf9c3e7000f7971f1f65ca7d20e07fe101960678eb9f9d00fc93ee1fef7f957facff1e30e3b381759fa80f80b510820304f15a0c7cfbf0901fc0aeff5ff0c7ff661e079e0352861c7791d64480e3986f800018ac00037ff0003f
+, 'hf60f9a079e00d0ffe3ffdd9c01fffefffdea7fffedff807f7ffc41ff06ffbfaf3246ff05f79fa2f7fdbecf8960f082400a8812803481220091005f073e21f8830fc01003ffe517fbd52430460bb081804fa8a34bc02840c30020256c0000aff903ff
+, 'h26f37afbcfd9fff803ff6bc43dbc5401e4fffffe9cfffffaffe43d7bf421a33cfffd8cb306fae47bf2c0e2bc5b4008001481782e200f81b281b481e3f17e723870c28c3fe2eb3fafe1c5d0456306f981421f80790020073000004d80000f7f900f8
+, 'h85fc41c0bb643edfffffdffc3ef3f800ff37000f1dffff7efffffffafa07fdefc63faddfffa16ea065cec7dc26121ec0e900981c980f21500f2d4087f97e347c70e2280380017ffff1721ec2e025b001f0ecb0f6809002d00001d900002dff801ff
+, 'h9bfe1202d152d81a0a124f5ffd7e7c07b90e3fbda7ffffc74fe0feadf871fdbfbfbf37ee17fde6fe8b6353b66e2839823e01e01c504b01f84a076ccfe07e3b00f82449fff119fdefe765fffeb23dd6eeb07fec1801e02bc000003b00800dfe0000c
+, 'h6e77cc0bcf98edf802e16f1d9e3b5e05fa7e7ffb2e9f0255cca457813dfbdcdfe17ea7ffeffc1fbffffbe30c7e341109f6807c02f04824d00a11a08fc73f0c01fc015fffffa6fefef18afbf02e1b0082710c60160fffc6e0c3303981001dfc0003f
+, 'h3edf1cbccfbf3ffe0397dfc73dfefc01ed3f3fff28fdfff6ffdc7e57f421effdafbfa0ef07f5b81ec38cf0b8738005808e006001000f81d289f481e3fd76a03c71c7143de1467f9fe196e047721f7c83d23df021800006f00005f98000077f900f8
+, 'h137fe4bc1ff725ab002fb87e07e46f887ff0df7fdbf2df7f55f6cfc0af001f84bdfefcffe07fdbf71efa58bfc14281e00ee0128110007200402956397f1fe1c1890022c1f839d3f9fe466060e3f3bcf2290c0085e013102d00d086780120dbf8683f
+};
+
+bit [NUM\_INPUT\_PIXELS] disgust\_image\_array [NUM\_TRAIN\_IMAGES] = '{
+'hfceffb2f7c05e7fbe73faadc09fdd3fe5ddfbfffbf75effdfff801eb974f9f427fefee0fb9ef82ef7d7ccb0b77f1c2a0084c1e81c100d807a6820601fe27f3004f006b71606593fbf8aa7b1414520c00be0528287820016b0000292c000677f7effc
+, 'h17fd0fc0fffba23803e7f31f1fb46801eebfffef3c9fff24ffe067d6f001f297dfbfd7de67bb9f79ef534abc7ef011c09801c81a481f01fe6a0fe18fe13e6600780585fbff3b7ede42547eb0dd1b50e5e07ff1bc04a085f80108fe0000033e80090
+, 'h9bffd36ff803c5f3007fc6e8b7d29fd73fdeea8daadffff777afeff9bd201fe5fcfbe777e37fcdfffefa377ac46e81dc05600b81b900f006c000fe947f37c6a20780b403dfe5e7fafef83f3e29e59c00e8026a1e70f9386800001cf00000d0040010
+, 'h7d3ff2140e4fa2c0e03f985860f343c07f487fff7b575fffacda47f837801ecafdf7ec97605f22bf5c3e1c1fefda80e109e416800100f203f3e9de109e07e1e61b0125bfbf71689d7d62340061f8f4db6e020309b81a00f56028223c0a01dffff0ff
+, 'ha3fffe0fd806f02bc036eb9890f8fa4017a1d7ff2f687ff1f94a00cc9f1f3d5e2d67ee47e7ffb2ffbc7ccbc448ea21b82b1197f24b60a20123e0df0b01f30c1ffe011b7fbff244fddf213e71855080f0729f8c0bf0867842c00033580001efe063ff
+, 'hf7f07e00f601d1ffd7be74bc07f99ff07fb7ffdfe43fffff9ff6fff465800fafec20f1edfff37be2067c341888d216c40b3016015901f80707eb7e2cff518f4003020af7bfcce3fda01006461af00b207003cf3bfe46206090501ddcc001fe7fff78
+, 'h817fc7742fff3a63c07ed6b002f296801ff7dbdae6db7ffffb9ffefa5de01f49f9f9ff3f477c853e07f29e3da3df02942a001e81ac80f819a25456627e17e5e177806100d9b3b7f9fe7d0b464be98b9edb06ff88447840fe00080358200073e80088
+, 'h1cff3effc07abdfcc3dd87803d87fe0eeeffffff16ffffff9bc03feff861f3927f7457ba0ff814ffd7f8c29839500100c880680bc01f81a224f605effb7f043870828c3bf65a7fb7b1e7e06e5e3e7d46703dc07300000f3800007d8000092ff80f0
+, 'h7e02dc77d3be00ff79e97fe03f64ff25fdbffdffa3f3ffccdbcff7637160feff801fa3cffbbddd3075ea518e05b08688a080f413580f801c317ff527f1387a003830a63ffce53fdd04e8e221bb000f17580f51d4a0060ba4c080be8400077bfffa0
+, 'hffdfcebfafdef467c03bddd900fff3fff4fae7febf396130506805ccb6df1e287e6be847e867e9f7ddf6680103e083021bec1a81cc00f00887e0cf103ed7e0541a005fb9fb6231f1f85fbacc1bc0cc00a7812616b04001d68000663800039ff747fe
+, 'h5f88b817fe4511fef6effc73f7f7803f93f9f3f6d7e0ffbee7ffe45f7c7f39f861f98fdfbf0d9e07783b3ccbe940b40de08d84e1b0f0110030fe267f77e187830062813fe343fde66237e40d903024bd80ed947801109a000007280003bff801fe
+, 'hca409dafd606e7f28f1f1ffc03bafdfff78efffffef7fcefd9f807f2f79f3cb0fdf7f1c3e0e7c776fd7fac2329e581700f801f00c608e406862bae407f0fd87188707c41f07843effa9dbb6e73e0d9750392d3e7ec600063e18201d5000047ff003f
+, 'hf967dda0fd04e7fbe73fcf1c0bff1fff1de7bffeffbbf1fefe7801c31fcf9fce7ffffa2fe0d7e4f3fffe8a8933c083a42b401e80a3104000864046117e07e0004f387b61e030d1fbfebcbb1e10714c00ef053411c80002ef480117200005bfffeff4
+, 'h7fffd0e0bc07b1f7003cdafc97fadf1f3e77be0cfbfafff6f1cffffaf5201f53f9fbfbbfe07b47dfefd77c58e0db8a9832401f81df80f01a4003fe997f07e3c6c780d400ffe787fbfec87f4ff226c220fc01da0ec0e2f16b010014c00000f1000010
+, 'hd3ffbe1fbc05f317800f3734d8f1ef287b81bbffbeac3ff3f8d8014687dfbee77ee7f1cff9fff8ef3fdc1e01009b05ad0ee01780f388a20177e0460400f3f01ffe00977ffff2a46b6e293d1d43c9be395f062402290421ec000001bc0004dfe001ff
+, 'hddc03b812f05cfebaf3e765d09fff3f7ef3cdfff9997fdfff55801630b0c3f427df7f90fe0ff64f7de5c1433cbd0013010805f003e80e4144e3b842a3f1fc8900438ab63b03303fffc1e43fa724383d83f07fe8ca810002bf080052e804131ff007f
+, 'h5fc4180ffe2bc9ffff7efc53ffb3801f6379f3edffe4ff6de7fff54f080ffe6871f08bdfad856e07e89f3ccba181741d500c80a000d0150822fc017f07c70987005e803c3307f9fe4e35e96ba0b1610f82c90fd800495400400ef000031ff801fe
+, 'hf7efe6def003bdc6003d6ff817ef3fdfbecdfa05f37cfff2e427f2f5bf405fa2fcfbfefff07f92fffef676b840df026c02580781f000f40580113ebc7f1f85c00100f247ffffe7ffff507b6f0e607385e00adf02e00001cb00000dc00002b3878010
+, 'h10fff90e0d47f9e2a00fca1c71ff11e07fbc7fff29037fff7cf217549d801fd3fdfae097e077f8bf4cfd643bd36d8020064c0200ed01780133e1400c3fc7e13c0a0c0e33b0136dfbfe1f0110a1bbce0e27838b457804002141808dfa0f80bff0707f
+, 'he1fff21a0e07a751803f98b8f1f527c07f78fffff9de7ffaa25207f53d801e827df6fe4de077c9f79cba2c3fedc700200950168048807281b7e956243f03e2941c003bffbc35d0fffc2b3800e5e0ecee65060105e81e10b340200d4008403df5f8ff
+, 'h80bee4331fff3f89cf7fdf7801ff6b801ef47df9f6fee3ffd8c3fff08b083ecf78f9f189dfbf8dfe077c1e3dcfcd417407b08d80c08070040070fe107f97fb47830012011c3907fdff6e73e4a1b2dab26c17694d680050a3006004800183bff000ff
+, 'h82ffc4705fffb9c3801cea61f3f5db803daede7cb55e7fff9d9eafaf37c01d86b1fbf7ffc77dcb7e0ef75a3984d7221c1aec1c914100f013c600fec87f13ed60078154499feb97fdd67f1eca4a410f8e5e078f8a800c005e01000bb80000f7f00014
+, 'h818073c7f403abdfcf7d7bf8e3db6ff1de59effffbb7bfff1ffc037fddc61d8132f7b5eee0fd67b35c7dac3d8290008014101680b801f8024aa7445b7eb7c663870c30c3be21e7f07e707d08c3404f58fe08dc00b150017d00001db80000b4fff8f0
+, 'h91fe5ff3b00383fec63fe2f101a71fefec091fffdf37fffe1fac00feaf879eb176fbf0fff0f773ffae61b01c80a4406418a00f80b100702080107f41fe18214385c06081fff4cfff7c5c33c15b23c0f25d06ed82501580fe00005a9c0002fffe007c
+, 'h2dff7df7807b3ffc03bef790bdf3fe07efeeffeefefffffb3dd8fd6fe841e311df7b0bea87e57dfdcff801987a0800020100781f8016803200b00e67e57c183871c22c3fe35c7f9fe3a6e008571cfde7e06fc02b00000f500000fd00000fff7e0f0
+, 'hf7b5f0ef8cf9bb05802fe71871ecd3801f3e7ffff58dfffc843e03fbef021f08fdfbf9dff17fa2d38e353219c0dd4010071107812081600d6ff056a03c07f0281d001c7ffe13a3fbff2c740382b080e25e051f4e980800d6c01017400000bffe81ff
+, 'h55bf336fb47f8ba1b00fbf3e61e7b6c00f8cdfff5be7fffe16ffefeb8f801f41fcf9f38fff7f8be32f79721dc6d19092878007806041f01837e000d42007e2a83f1e267ffc17a45ffe042a0587c19002bb06fe41d01009db80006b5c00016ffc8dfe
+, 'h7fcc040fff03f9ef7ffdfc01ff7f801edb79eaf2e3e7ffe4e7ffb12d480e8af879f9c5dbbe89be47743e3ecbd0a1640650058150e0f0121012fe307f97e0c7f7883680381247f9ff1a33cca7b2db10c4034943384010cb00e00bc80021aff801ff
+, 'h907fbb0fbe0dd1ffc02ff910707929a80b87ffffbc3a3fd06860023f91df9ce46ef3e157f17ff47f5ffd6df1e842a00c7ed0ffb8b2206211b7e06200059dcc760fe02f7ff03218f1fe1e2e92f639d0d41c8e2406b8812815c0801fe40000bff007ff
+, 'h907fbb0fbe0dd1ffc02ff910707929a80b87ffffbc3a3fd06860023f91df9ce46ef3e157f17ff47f5ffd6df1e842a00c7ed0ffb8b2206211b7e06200059dcc760fe02f7ff03218f1fe1e2e92f639d0d41c8e2406b8812815c0801fe40000bff007ff
+};
+
+bit [NUM\_INPUT\_PIXELS] fear\_image\_array [NUM\_TRAIN\_IMAGES] = '{
+'h7c05f0c7cf3eb1f10feeebca0ddbdf5ffe53ffbc37fdf7e33f24ffa75801e85fdfaf85eeb778ac30e34a8dfd0640108080019818883f8813647462c7f27ea21f1783cc07024b3fffd3f67fa2e4be03c9bcb8c27fc2060e4205815b0c000f7ffc1f8
+, 'h3dfedf9be0b6027a078257cf3f13f80bf05fc01fd7ffffeb8fffff25f3fffd37c0072ffdfbfcfde47f95a38c7c900fe0cb80f413141f893a00740547e076b67f57e5a00f80ac60f86d0bf9f87f03401ff801407f801037f580004d08001dfd7fff8
+, 'hdfff85ffc058f47003d9ef0d0c78f00061defff67b8fff38c9b05f92f83dfe0fdfbec37e07f265fcf9d3e7980dc810c2004cfb814c2721122d05a1c3e9fe470fff0294078342bfdfc281fad55f87028a4040117f83840ce4040137a00036fbfe0fc
+, 'h831fe50e4cefb38af03db15e63ed9b801fe8fffff9b75ffee1ba63f06f800c077df3f897e277c6ff1cb2b83fe7ee81f815f01f80bf007a20462e182a7f07e3f0bfcd18600002b3fbe62a02e7d551c8ceec06420b701800ce80a80fb4224117f6f0ff
+, 'hdf2f86efc0789678f1e7df00861cc9f4635ffff10b87eff9cda01fb2bcf9fa9fe73fd37f0ffa6ffbfd5109da0f8008c2140efa14c82721122d0030d3e8fed607fe82960783423ed9ee5bf8743c03830c3c41007e038c8bec0191f7b00026ffff0fc
+, 'h2c7e1e7d807ffffef7bf7fd03dd97e01f6ffffee2fbfffef8ddfffcefc03fa475f0f7faab7f15d74cf2820f87a40000080412813001e833200f00483f17e74387193ac3be67e7f078133e0cc7704fe8ffa35e04b000007d80001fec0001513ff1e0
+, 'had3faaadec25ff63a02ffeb8f9fdc7c00f20dfff64dafffcdf9fc3f807c01f33fef8d05f75ff35c38672c28ec2f9404c00a00f81900272157ed15a187e57e5c80f803243fc07c7fcfe823c8287f060c1a48e120db80001ee0000265c00054ffffffc
+, 'h121fd86803fe8170fb7afffc03ffc59f9ff3bc02fcefffdf73f7ff70959476d76001f809dfef8ce607ee8fbde5e481fc0f148981cc8070130432d63c3f97e123e91e2a1030059209ff353fce2c7917522ac5c305543000db806013d40003cffe01ff
+, 'hfcfff5bffc03f7fb8e1e897977f17fd9bfffb204b3ef7ff7fbfffe99f62037ffb9f3fecfe67bbfffdb71ce73c5d312942b9013814a01f00270044e1d7e0fe671dfa09a40a02457fffeb63d1f84d9a401ab01e015782830ba8000159000023023e0ec
+, 'h46c07e48f6f3f30e90fffdfca3a37bf5fdd57ffbff2fdf7e1e624ff17f801ebdd1f8fcbe6f7793e30e4970dfb248000c080019810002fc951c6f06747d77eac3e07c40802013ef87861f4fdfb6a3fb06bd83060ea438602bd00907ca00017fffc1b8
+, 'h82c5fb47dc03dbffc73f57f80bc387c43edfdf9ee66fdfffffdeffd2bfe03f3ea4f8e14fe77de1030ef88b3de29040b01ec81000b240f81bf09f88feb79765d3c71c6240bc2167fdfe3e1f04453047e86503f404b00000f880000bfc0001f33ffc70
+, 'h2fffced1eff9e63003d9af0f8e254807ffdf7fe99b9fff36efe07f932020f6ffdfbe99fe07dddff9f6a20b9e39c011c07480d81ba02f08647d0765a1e07e361f7845f40f013d7ebfedb1f9e63c03eeade04f083f03860b500400d28000031f99890
+, 'h83ff8080fffaff1e0ffb6f801ddffdf2fd87e0ffff5ffff2ef4e7f11d003f89fdf8f866ea6ff88b0d7c5c3dc16301ec0d4389816880721908d2de207f97e34bed1e120030026279ff2e3fce15b1bb70f0800002600008df806415cc0002affc30ff
+, 'hf4f8fadffc01d27b875fd8597af6ff981fa0320edffd7ff79f7fefdefc201fffbc7bf5cffe6ffafe1f7eda35cf838b9002201b801f09f00a800f303f7e05e0c3f17e7700f811660d1fcf7fffe1d9a1ea6704c309b0161076821011f80041b0029074
+, 'h42bff2384c07df29e07fe93c73f787e0f7f1efffce2bcf3e45f803e867158b8b7cf6f4cfe14fa2c3de7c783fe14600e803d017c0cc00f00227e076b9379fe2d41e193eb98023e5fdfe5d3840b2e054f60d03a007280200df00a1063c09013ff5f8ff
+, 'h427ff6180c07a120e03db93c77f78fa00ffbffffff4bffbac3b847e8479017837df7e0af606fc5b3dc3cc81fefbb80e10c4416801b00f002cbe16611978bc7ac1b582f3fa02795fffe1f32800e60e1ec2501c00d300080b78021193408407ffcf8ff
+, 'hf5503a47fc01dbf7af3f38bc01fa75be6dfdbfff3f41e7b4ff5f07fcb3841e465dfa7e97e07e82fffffdce3fc7c480802e4c1281b140f810012620b12445e007e97f793dfbcba4be006420200dd9f9fd2e33bcadb04403ee8000152c0005bbf7fffc
+, 'h87fc40c0fff45e8f5fbfdf803fff7cf1e60fe0ff7e77fedfffae3fc4f00171cfdfbf8eee87e80f71c7c2b3fe5a441bc15194f894882700b2052fe48bf97e253ef045640381243fdfe1329ec0ec970b04300a403d001009a010016bc0005bfffffff
+, 'h2dbfe7f8247b1fef803fec3a71debfc00f9c4fff6247fff8dc9e77fe17801f43dcf8f3eff7fe55e386715a28c2be48400f800f8193027a1dded153507e07e2e00f125a43fc12c3fdfe423406cb91e4f076841816e0000aab80000f5400034fffe7fc
+, 'h4777eadeacfbebe5a01d3c3871ed27800f2cffff650dfff9e5fe77fdb740077af8f9f60f77ff95a3ae3bf69cc090084800080f81dd027a026ed14b203e13e5e007802441fc14a3f8fe7c3e0289d0f1e48e88af16200500f5c0002cec0005fffffffe
+, 'h5dfea40ba0f7e27807d17fbf3e04f803e91be81f7effffea31ffff5c71fef8bfc01f67fefbf9fdf07bad418c4c8825b0bb80e416600e803c067dad27d87ea93f75cfc40f8215bf5fcfc018c1ef80071788088277f2021fbcc000ec40006ffbffff8
+, 'h30ff7a531e0796ff803eacfc796dfe402b363bfedc9efffbd7fe777abf801dd5fdf8f3dfe77f83c70665d01c81ad81140d381d812802f890e6d756303e07e5e2f19e3a00e817778f0e891f9fc7e87cccce022017d018a0bc80000d340000e0f3c830
+, 'hffc01e3fba627e9fcfdf3dd871fa6778edf11fff6ff5fffd8c6e87e8030617406fffeccff0ef40f3fd7fce1f23cd8114052c0b81a802fa01621403293f57e3e3fb7c5a05e80e7704041fbffece68d8613b8048976800029f40005faa000f67f7ffec
+, 'hffe6cf1fffaff7c07d24f0f1eebc801b37f3ff7ddaffefe51ef77b77003fedf929ffdfef7b5dff066ab039c0de01d6020801815c01f809a02f2ab67e07e583f1fcf70f7e019e0f02ae3fbfe5a0f9f0ce026603f80ac197010006b80001e1f10018
+, 'h7dc07ffffc039fffc17fd77863defff9ca9ddfffe22fdfff9edd0ffdafc21f216ff2d0fbb07f7d67fcfa201d83ad000009481681b200f817a20b4454be5fc26187011e67bfe727f86627041c85b02fe43f83fc0f500000fa80001ffc0001b03fffe0
+, 'hffeadfbfffd4fb803dbbf0f1e4cc001eb1bbfe13e87fdb8774df7ff7a03eb3f9f9fe9fef3b8ce7075f609ac2bd810e00c01d81e282f811c6d772523e07e7c1f5f49a43f811d7870e6f1f9fc891f8fb5e20700bf808b07480001fa8000121f1884c
+, 'h3bfff1fb7e1733cf0019f1e8e5c5de010c77f7ff263dfff3590644ea9ba07fd17dfbfa67677f89ffaff60ddc802a0040244009b83008f82ba833571c7d97ec6be8801805be3e560786863fc7cfb8f8208d870317e40008b582021efa0002efffe0fc
+, 'he7c00eeeee783575dfefdffc01fe71ffffd63fffafe1fdf4510903e4d5c79f007fe7fe17f1efae39ff3e8e3d07f2c10c0c540f81c802720103544f013ed7eb51dfb84022700bf9c03c1fb7fc5674c140bf04c0a5c820018f0002133c0006bff7fff6
+, 'h7bc01feff202ffffe7bfaa7851fe1778635cefffd81dfffecc3f17d08f801fb2fffff49fb37fd167cc7e1a0fc1c1006a012804c0a440b800c06fb41e792031a7f13e2e3ddc0fd4ffc0ae2000258587fd2b378f2d40f801f5804073e80024efdfffe4
+, 'h13bbe243f40f9ae7c07e04f9f3c19f82bf968e00af97ffff67affff9352fff4be800fcffdfbfbdee779dfc38c7ab09eb08260e406080f813800f88747f176307e17cb600f805c60f865e3f9f98f09c09ef001613781820ffb810168cc000dfbffdf8
+};
+
+bit [NUM\_INPUT\_PIXELS] surprise\_image\_array [NUM\_TRAIN\_IMAGES] = '{
+'h89e73d98588be0b3c05ec0fe03f027d87e87fffdf71bffff46d7ffda3bf7ffe1fe67f87fa09feb4df7fdab124669028a89401f507b41f811403f805d2cffa727f074bf3fbbc54c9700e920c053e9f2f87e80000bd40001f6c0000f720002f15f1fe0
+, 'hf4d6d4ffbc03ef77507f0e7bffe3c7ffdf83fffef12ef6e798cc05bc5fb6bdf93ef7e6bff07f1aff4d4f481b4096410f1d041d813c92728156c05e423796f0b1fdf86f4278149208067f9f0fcbc02020b7000006ec0093fd200057750001cffe03bf
+, 'hfc307c1faf7ac5f7cabff9fc01e965dfc379bbfff6fbfffbffff47fdf5c21facfffbf017f17f9efffff00bbfe7b4809c0c040981310af00400c0181076c66213cffede3ffdcfc827501721b80fc9f3fda7020436e80006f7000096b40004f3ff6ff8
+, 'hffe07bffbc73fbc7c0bdfdec71f7afb8ee01fffffacffffdcafd07f3e7820711aff9ecf9306f9561ee6a00098053004413c00681bac2f88fe0df564cb7dfe323e79d1a40fc3667f8fe6b3c00468062c0f5014807e80000c880001ef40001b03fffe0
+, 'h16ef06e1e17f701cb3fca7407c9d7ffdf73dbfefaccfffe93fffff647e01f9bb9fbfc776f7e79ff07e3d31dc0d1c39c1ef01d81ce81fa93800f5a6c7f176141eabe6f3cf980a40f81dd63fe27b3f27ebe163b056018003f00100ff8000031e80008
+, 'h813fd3961e0f66a0e079e59cf7e54b801f8b61f8c76ffff6cb7eaff75f603f9ffc69ff6fff7f6ef605fa0079a6db031c16cc1d81be80f80c8007397c3f176ba3e8be7d1cf18d941f80bf2fb72ff1e5fce603e003e81000fe820006740000b1ec00b4
+, 'h7eb3f17bd0bd81fc87c827d03fa77beee55ffffb9adffff237ffffcdf2f7fabfc01f97ebff7fffef4fa503081c810f406581d821a01f837852f009eee556b77fb7cdb1bf306840707ff3f0f83a82071c502000a8800015f58001fea0002a3ffffc0
+, 'h823fe82c1f4f6e01d07f983867e707c03ee4effeb23d7ffc377e6fd02f801f04f979f9bfee7fc4ff0c341c19ec8e00b9012007802840e803f20f56403f9fc2bbf8f85d00b927a77d86251d2fc7e060788788224fa40f015500141bbe0122affff8ff
+, 'he3f7eeefbc0197f7833feb6f0bed6fe01f2ff9f4fc9fffff3fffffd54eff7f95fc00ff3fb7bfabff87fcca7fe160016c01e804c06841fc17202fc49e7d3be3c3fcbefc0ebc03a60582fc3f8fe2a0f879ce02a014f00001fc00003f38000290cbf110
+, 'h7dc07f7ffe63dfffcabf5b7c03df0fbfceefcfffebefffff58dcfff2ffc02f975bf9f6dfb77c99070e3ec01fc60a000001001081b640f81de0bf88dc36d76323f73c36dc7817a23dfe627f82e531e498ed89bc05700010f980001bec0001b03fff60
+, 'he1a079ff7cf7ffff907fd96c27cea5fdde7cbfffbcdfff7df2ffefe19f803f76f941f09fff4e81e60e7c645ce1a0819d018099819cc2fd21a06f30743dbec123f07c2c0c7321c60884679f3fc3e01941a30c240dee2c804310001a19c003d1ffc3f0
+, 'hf02ffc80e403c0fd972e1fdc3be3efe00ffffffffafaffff735f07df8fc00fde3afbf807f8ff90fffefaef3ada48a1dc1c0c0d808c40f810100220123764b203e9bf193ffce435ff7c6c60700b9bf8fc5f2f461bd00800f3801012e00002a7fcfffc
+, 'h43e1fa7a3ce3cd8f407e426ff9db9fbfcf63edfff16befffdbfa07f47bd09ffd75f37b9fe67a6f630869380de0fc011c1d300d80bc13f89424c7725c7f07e367efbcda1ddbc7a01f809f430f6fe3e37cc80dc403d03100df002006500001b3d40010
+, 'hc9e0736f1cf34ff780dff7fc63dee7f9cab1ffff6eebfff979c56fe0fbc01d33f8f9f42f7f6fcce30e685c3d83d100ac0b888d8114487c218c1f24653787e321f17c47443031d70fc646afbf8bd11c20ecc307053c0200c320001d74c001f1ffc3f8
+, 'hfbed703fdc01fbf3f02e877c09f7e39e0febf7ff5f65f7f6a97f87df63403f00d8f928eff17fccdb8cf41a1fd3e180101c880c808240b81b096f00036c65a7d7e97e4a3ffbebb0fef86f407001b31981351f0f95a80400a680003ff000016ff5fff8
+, 'h12bfe5fc1f074721805eb17c67f7cfc03ff1afdff33dfffd655eb7c017c43e8ef909f91fef77cdf606b09c39eda681f804a017801080f822600f005c7ed762a3fbde5d5c9f92a21c025d3f7fe6c1001c360f0d04708200b780f085900140bfec703f
+, 'h3ffd0ffe406fbd3c03e4659f3dff3278fdf7100ea97fff2c8afee0729005fae79f9f78feb7f05f72e612239c2eb419819100f8080004209091b4e5e7e03e41bcf842201fe25667efc3b3f830b5144c0cc0012157c0008ae21801b3800026ffffffc
+, 'hf1fff3e7bc03830f807faefe97d7feefbf2ef865ed1df0ff7eb7f7fa5cfefdbbfc01fbdfffbfc3fb07fef27cf23655ae14c00fc033807816c02fe0b66d3be587f5fefe3fdc19640782f878efeea1f87819020416e041005d00000a700803908b8040
+, 'h3d7dd7d37406fbc8a77964b889bbf6841f4c77be6f27fffb0ebfffcf1fc01e9cfcfbf35ff7ff72f30e701818e27500dc13400f8090427a02aad14b56fe53e123c2848a41fc17d67dfe8b3f814fa020813f881056944002e7c0001d5200027ffffffc
+, 'he3e03cf77cf7ceffa0ffbe54e3e78ff1fb8db7ffd7affffe707f67e06b801fd3f969f85e6f6f81e70c78d8fce800101c0a081b8105c2fc25a05f28163f3f6683f07c36447315861f86263f7f85f9a840ee8d1f0eba33005650000d380001a1ff81f0
+, 'h6a3fe81077ef5a81e07e5e1f07ef17c03fd82e0ff72bfffcd1def7f267803e01d949ee4fef7dd5fe06b8e93fef8983b80e34058016007824b02f181cbe1f6bbbf9de7ede4f85da1b022e9f4fd551003cfd0b050d384f0072001009de01517bfe787f
+, 'he56fedf7a803d68b861ad67089fba7f67c9cd7ffe63cfff819be17e60fe01f9df4f9f63ff7ff3db30e705c38e0f788041891078098007a01191242466e17e693c09e6e98f8110c3fe27e3f03ca803c12f7102c47984000ec481816b80201effbc1fc
+, 'hfe7b98fbe07fc15c21f4bbe83f247da7f92f7fff737ffffb5dffffd3bdfbfadf263ed5fe8bfeaf974f76a10409a1688070c0741ac41f821a23f885d3d776babe87cffdffbc2920202ce1f1ccf9070f1be808004440002f7c80017f20003d01fffe0
+, 'hf7cedcffb8dfce07902e2b76f9f15ebfd71efffff849fea7c9da05df93dfbf91fef7ee2ff9ff03f36f5b4839c0fe010800001f811c906291d6e1562a7f96c561fbfc698efe03741a06c83f0fc6986040b60620158800023740001bf800056ffe03bf
+, 'h5ff938fbf8ed877803cfefa67f7f7a7fd4ff401ebfffcfe3ff7fffdfefeff37e801fe8fca9f9bff77fe3738ed3de7bc36a80c013ac0f81c602fa85a2d7defd3f9fc381e9d0fe40703b33ebfc6d1f8f1ec000004700001ae00000ebc000370400040
+, 'hc0e07c739cf3ffcf80bff13c21e2def7defc57ffffffffff6bfdeff1db801d9cfdfbf83fef7fc1f30f7fb61dc76ac07c1c10098151c072088073da30e797e3a3eb9e143e981a2403c25137cfc3d1fb614601c90bb03400d8842014e40810bffd30ff
+, 'hf28f78bf1003e77ffcbf0c73fc71efffff8cfffffe1ff03f9dcc05df16efbeebbf77f62fd0ffb63bdc02180040dd419c18a40f81561a7242c2c05a2a3e8a7173fdfa3e0b7e15d60d826a3f07e09871e07f07021178000a7f60001bf60006effe01ff
+, 'hffc05fffbe73d5c780bdabf863f76f79ee7bbffff8fffffd77fd0ff09f80193db7f8e64fb17ea5078e38a80fc25001980a4005811c41f80a112f4adc7f37e323e59c0c98f8372679fe5e7f006631e6f07c0e950c3004005d80000abc0001f17ffff0
+, 'h80e070571ee7ff96117fe5f80fe3ff515dd07ff9f6fffffe8fffffe205e8ff10f801d2dfffff917e0ff4ae3dcf4101d83b080102d940f402c10694723f0fc147ef3df2396025000384763f8fb97ab7c4ac108015b80000fc0000737c0002effffffc
+, 'hdfe550dc0b83f0ce7c5fd81bfe8fc07efbfff9f45ffff6ef7ffff34b607ffbf841f506df7e0edf5ef84e3dcfcbf1f83a9005031080f40a8426245a2f8fe253f33c583ef003740782c2678fc35bfec0ef010211400c00fbc0400d8000071ffff1fe
+};
+
+
+int HAPPY, SAD, ANGRY, DISGUST, FEAR, SURPRISE;
+int image\_number;
+int any\_image;
+
+
+initial begin
+    \#1ps;
+    V\_block = 5.0;
+
+    regr\_cnt= 0;
+    images\_cnt= images\_cnt + 1;
+
+    image\_number = 0;
+    repeat (30) begin // These iterations of training with NUM\_TRAIN\_IMAGES images of all emotions
+        res\_cnt= 0;
+        //images\_cnt= 0;
+        image\_number = 0;
+        \$display ("images\_cnt is \%d", images\_cnt);   
+        HAPPY = 0; SAD = 0; ANGRY = 0; DISGUST = 0; FEAR = 0; SURPRISE = 0;
+        repeat (NUM\_TRAIN\_IMAGES) begin // {
+            \#1ps;
+            image\_number = \$urandom\_range(30,0);
+                V\_block\_pixel\_value = happy\_image\_array[image\_number];
+                //\$display ("Training HAPPY"); 
+
+                \#100ps;
+                if (I\_block[0] == 1 \&\& I\_block[1] == 0  \&\& I\_block[2] == 0  \&\& I\_block[3] == 0 \&\& I\_block[4] == 0  \&\& I\_block[5] == 0  ) begin 
+                    res\_cnt = res\_cnt+1;
+                    \$display ("found\_match HAPPY");   
+                end else 
+                    res\_cnt = res\_cnt;
+
+
+            image\_number = \$urandom\_range(30,0);
+                V\_block\_pixel\_value = sad\_image\_array[image\_number];
+                \#100ps;
+                if (I\_block[0] == 0 \&\& I\_block[1] == 1  \&\& I\_block[2] == 0  \&\& I\_block[3] == 0 \&\& I\_block[4] == 0  \&\& I\_block[5] == 0   ) begin
+                    res\_cnt = res\_cnt+1;
+                    found\_match  = 1;
+                    \$display ("found\_match SAD");   
+                end else begin
+                    res\_cnt = res\_cnt;
+                end
+
+
+            image\_number = \$urandom\_range(30,0);
+                V\_block\_pixel\_value = angry\_image\_array[image\_number];
+                \#100ps;
+                if (I\_block[0] == 0 \&\& I\_block[1] == 0  \&\& I\_block[2] == 1  \&\& I\_block[3] == 0 \&\& I\_block[4] == 0  \&\& I\_block[5] == 0  ) begin
+                    res\_cnt = res\_cnt+1;
+                    found\_match  = 1;
+                    \$display ("found\_match ANGRY");   
+                end else begin
+                    res\_cnt = res\_cnt;
+                end
+
+
+            image\_number = \$urandom\_range(30,0);
+                V\_block\_pixel\_value = disgust\_image\_array[image\_number];
+                \#100ps;
+                if (I\_block[0] == 0 \&\& I\_block[1] == 0  \&\& I\_block[2] == 0  \&\& I\_block[3] == 1  \&\& I\_block[4] == 0  \&\& I\_block[5] == 0  ) begin
+                    res\_cnt = res\_cnt+1;
+                    found\_match  = 1;
+                    \$display ("found\_match DISGUST");   
+                end else begin
+                    res\_cnt = res\_cnt;
+                end
+
+
+            image\_number = \$urandom\_range(30,0);
+                V\_block\_pixel\_value = fear\_image\_array[image\_number];
+                \#100ps;
+                if (I\_block[0] == 0 \&\& I\_block[1] == 0  \&\& I\_block[2] == 0  \&\& I\_block[3] == 0  \&\& I\_block[4] == 1  \&\& I\_block[5] == 0  ) begin
+                    res\_cnt = res\_cnt+1;
+                    found\_match  = 1;
+                    \$display ("found\_match FEAR");   
+                end else begin
+                    res\_cnt = res\_cnt;
+                end
+
+
+            image\_number = \$urandom\_range(30,0);
+                V\_block\_pixel\_value = surprise\_image\_array[image\_number];
+                \#100ps;
+                if (I\_block[0] == 0 \&\& I\_block[1] == 0  \&\& I\_block[2] == 0  \&\& I\_block[3] == 0  \&\& I\_block[4] == 0  \&\& I\_block[5] == 1  ) begin
+                    res\_cnt = res\_cnt+1;
+                    found\_match  = 1;
+                    \$display ("found\_match SURPRISE");   
+                end else begin
+                    res\_cnt = res\_cnt;
+                end
+
+                           \#1ps;
+
+        end // } // NUM\_TRAIN\_IMAGES
+            images\_cnt = images\_cnt + 1;
+            if (images\_cnt \% 6 == 0)
+                regr\_cnt = regr\_cnt + 1;
+            else 
+                regr\_cnt =regr\_cnt;
+
+            \#1ps;
+
+        if (res\_cnt $>$ 20) begin
+        end
+    end
+
+    \#100ps;
+    \$finish();
+end
+
+
+        block blk\_00 (
+            .V\_block (V\_block),
+            .regr\_cnt (images\_cnt),
+            .V\_block\_pixel\_value (V\_block\_pixel\_value),
+            .Y\_layer5 (I\_block)
+        );
+endmodule
